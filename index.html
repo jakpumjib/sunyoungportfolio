@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sunyoung Lie Data Portfolio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <main class="viewer" aria-label="Portfolio viewer">
+        <button class="nav-arrow nav-arrow-left" id="prev-slide" aria-label="Previous screen">
+          <span class="triangle triangle-left" aria-hidden="true"></span>
+        </button>
+
+        <section class="stage" id="stage" tabindex="0" aria-live="polite">
+          <div class="stage-image-wrap">
+            <img id="stage-image" class="stage-image" alt="" />
+            <iframe id="stage-frame" class="stage-frame" title="" loading="lazy"></iframe>
+            <div id="stage-scroll" class="stage-scroll">
+              <img id="stage-scroll-image" class="stage-scroll-image" alt="" />
+            </div>
+            <div id="stage-overlay" class="stage-overlay" aria-hidden="true"></div>
+            <button type="button" id="stage-app-back" class="stage-app-back">Back to image</button>
+          </div>
+
+          <article class="info-card" id="info-card">
+            <h2 id="info-title"></h2>
+            <p class="info-summary" id="info-summary"></p>
+          </article>
+        </section>
+
+        <button class="nav-arrow nav-arrow-right" id="next-slide" aria-label="Next screen">
+          <span class="triangle triangle-right" aria-hidden="true"></span>
+        </button>
+      </main>
+
+      <div class="utility-links" aria-label="Portfolio links">
+        <button type="button" class="utility-link utility-link-cv" id="global-cv-link">CV</button>
+        <a
+          class="utility-link utility-link-email"
+          href="mailto:ee.sunyoung@gmail.com"
+          aria-label="Email ee.sunyoung@gmail.com"
+          title="ee.sunyoung@gmail.com"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm0 2v.2l8 5.6 8-5.6V7H4Zm16 10V9.64l-7.43 5.2a1 1 0 0 1-1.14 0L4 9.64V17h16Z"
+              fill="currentColor"
+            />
+          </svg>
+        </a>
+      </div>
+
+      <footer class="filmstrip-shell">
+        <div class="filmstrip-wrap">
+          <button class="filmstrip-arrow" id="thumbs-left" aria-label="Scroll thumbnails left">
+            <span class="triangle triangle-left" aria-hidden="true"></span>
+          </button>
+          <div class="filmstrip" id="filmstrip" role="tablist" aria-label="Portfolio pages"></div>
+          <button class="filmstrip-arrow" id="thumbs-right" aria-label="Scroll thumbnails right">
+            <span class="triangle triangle-right" aria-hidden="true"></span>
+          </button>
+        </div>
+      </footer>
+    </div>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
