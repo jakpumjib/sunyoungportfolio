@@ -24,7 +24,7 @@ const slides = [
   {
     title: "Bulk Activity Data Entry",
     summary: "I created an app for entering quantitative data for an Activity in order to aggregate impact across our Programs. Some Program managers requested the ability to bulk upload spreadsheets, but conforming spreadsheet data to our location requirements would be difficult.\n\nThe solution was an app that had built in mapping so Program managers could insert latitude and longitude in each row through a Google maps interface. I also gave them the ability to group Activities with the same location.",
-    screen: "https://han-lie.github.io/single_screen_public/",
+    screen: "./embedded/activity-entry/index.html",
     thumb: "./assets/thumbs/page-03.jpg",
     mediaType: "frame",
     mediaScale: 0.88,
