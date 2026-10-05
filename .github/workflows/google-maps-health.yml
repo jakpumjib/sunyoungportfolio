@@ -1,0 +1,66 @@
+name: Google Maps health check
+
+on:
+  schedule:
+    - cron: "23 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-map:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install browser test
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Check live Google map and autocomplete
+        run: |
+          node <<'NODE'
+          const { chromium } = require("playwright");
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const page = await browser.newPage();
+            const errors = [];
+            page.on("console", message => {
+              if (message.type() === "error") errors.push(message.text());
+            });
+            page.on("pageerror", error => errors.push(error.message));
+            await page.goto(`https://jakpumjib.github.io/sunyoungportfolio/embedded/activity-entry/index.html?health=${Date.now()}`, { waitUntil: "networkidle" });
+            await page.locator('[data-action="open-location"]').first().click();
+            await page.locator("#modalMap .gm-style").waitFor({ state: "visible", timeout: 20000 });
+            await page.locator("gmp-place-autocomplete").waitFor({ state: "visible", timeout: 20000 });
+            const fatal = errors.filter(message => /Google Maps JavaScript API error|InvalidKey|BillingNotEnabled|RefererNotAllowed|ApiNotActivated/i.test(message));
+            if (fatal.length) throw new Error(fatal.join("\n"));
+            await browser.close();
+          })().catch(error => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+      - name: Open an issue when the map fails
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = "Google Maps health check failed";
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+            });
+            if (!existing.data.some(issue => issue.title === title)) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body: "The daily check could not load the Google map or Google Places autocomplete on the live portfolio. Check billing, API status, key restrictions, and the latest Actions run.",
+              });
+            }

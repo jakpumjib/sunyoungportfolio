@@ -448,10 +448,13 @@ input[type="number"] {
   background: #f5f7fa;
 }
 
-.map-surface .leaflet-tile-pane,
-.activities-map-surface .leaflet-tile-pane {
-  filter: grayscale(0.75) brightness(1.04) contrast(0.9);
-  opacity: 0.78;
+.google-address-autocomplete {
+  width: 100%;
+  min-height: 48px;
+}
+
+.google-address-autocomplete gmp-place-autocomplete {
+  width: 100%;
 }
 
 .activities-map-surface {
