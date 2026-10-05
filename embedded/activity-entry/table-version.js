@@ -566,8 +566,7 @@ function renderLocationModal() {
           <div class="stack">
             <div class="field">
               <label for="modalAddress">Address</label>
-              <div id="placeAutocompleteHost" class="place-autocomplete-host"></div>
-              <input id="modalAddress" type="hidden" value="${escapeHtml(row.location.address)}" data-action="modal-address" />
+              <input id="modalAddress" value="${escapeHtml(row.location.address)}" data-action="modal-address" />
             </div>
             <div class="toolbar-actions">
               <button class="btn" data-action="save-location-search" data-row-id="${row.id}">Save address</button>
@@ -790,33 +789,23 @@ function initializeLocationModal() {
       });
 
       const input = document.getElementById("modalAddress");
-      const host = document.getElementById("placeAutocompleteHost");
-      const autocomplete = new google.maps.places.PlaceAutocompleteElement();
-      autocomplete.placeholder = "Start typing an address";
-      autocomplete.value = row.location.address || "";
-      host.appendChild(autocomplete);
-      autocomplete.addEventListener("input", () => {
-        input.value = autocomplete.value || "";
+      const autocomplete = new google.maps.places.Autocomplete(input, {
+        fields: ["formatted_address", "geometry"],
       });
-      autocomplete.addEventListener("gmp-select", async ({ placePrediction }) => {
-        const place = placePrediction.toPlace();
-        await place.fetchFields({ fields: ["formattedAddress", "location", "viewport"] });
-        if (!place.location) return;
-        const lat = place.location.lat();
-        const lng = place.location.lng();
-        input.value = place.formattedAddress || autocomplete.value || "";
+      autocomplete.addListener("place_changed", () => {
+        const place = autocomplete.getPlace();
+        if (!place.geometry?.location) return;
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
         updateRow(row.id, (next) => {
-          next.location.address = input.value;
+          next.location.address = place.formatted_address || input.value;
           next.location.lat = lat.toFixed(6);
           next.location.lng = lng.toFixed(6);
           return next;
         });
         marker.setPosition({ lat, lng });
-        if (place.viewport) map.fitBounds(place.viewport);
-        else {
-          map.panTo({ lat, lng });
-          map.setZoom(14);
-        }
+        map.panTo({ lat, lng });
+        map.setZoom(14);
         state.mapMessage = "";
         render();
       });
@@ -1211,7 +1200,7 @@ function loadGoogleMaps(apiKey) {
 
   googleMapsPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async&v=weekly&auth_referrer_policy=origin`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
     script.async = true;
     script.onload = () => {
       if (window.google?.maps?.places) {

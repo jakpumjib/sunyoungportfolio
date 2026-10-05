@@ -415,16 +415,6 @@ tbody td {
   appearance: none;
 }
 
-.place-autocomplete-host,
-.place-autocomplete-host gmp-place-autocomplete {
-  display: block;
-  width: 100%;
-}
-
-.place-autocomplete-host gmp-place-autocomplete {
-  color-scheme: light;
-}
-
 input::-webkit-outer-spin-button,
 input::-webkit-inner-spin-button {
   -webkit-appearance: none;
