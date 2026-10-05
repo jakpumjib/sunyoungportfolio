@@ -118,7 +118,7 @@ async function loadGoogleMaps() {
   if (window.google?.maps) return;
   const response = await fetch("../activity-entry/index.html", { cache: "no-store" });
   const source = await response.text();
-  const key = source.match(/maps\.googleapis\.com\/maps\/api\/js\?key=([^&"'`]+)/)?.[1];
+  const key = source.match(/googleMapsApiKey:\s*["']([^"']+)["']/)?.[1];
   if (!key) throw new Error("Google Maps configuration is missing.");
   await new Promise((resolve, reject) => {
     const script = document.createElement("script");
