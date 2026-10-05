@@ -744,14 +744,14 @@ function initializeLocationModal() {
     ? [Number(row.location.lat), Number(row.location.lng)]
     : [20, 0];
   const map = L.map(target).setView(center, row.location.lat ? 14 : 2);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 16,
+    attribution: "Tiles &copy; Esri and contributors",
   }).addTo(map);
   currentMap = map;
   currentMarker = row.location.lat && row.location.lng ? L.marker(center).addTo(map) : null;
   currentGeocoder = null;
-  state.mapDebug = "Public OpenStreetMap basemap — no API key required.";
+  state.mapDebug = "Public light-gray basemap — no API key required.";
   state.mapMessage = "";
   map.on("click", (event) => {
     const { lat, lng } = event.latlng;
@@ -772,9 +772,9 @@ function initializeActivitiesMapModal() {
   }
   const points = rowsWithLocations.map((row) => ({ row, lat: Number(row.location.lat), lng: Number(row.location.lng) }));
   const map = L.map(target).setView([points[0].lat, points[0].lng], points.length === 1 ? 12 : 4);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 16,
+    attribution: "Tiles &copy; Esri and contributors",
   }).addTo(map);
   const bounds = [];
   points.forEach(({ row, lat, lng }) => {

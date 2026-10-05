@@ -185,8 +185,7 @@ h2 {
 }
 
 #map .leaflet-tile-pane {
-  filter: grayscale(1) brightness(1.18) contrast(0.78);
-  opacity: 0.5;
+  opacity: 0.92;
 }
 
 .sidebar {
