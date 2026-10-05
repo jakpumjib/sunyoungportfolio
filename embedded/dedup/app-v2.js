@@ -8,7 +8,6 @@ const BAND_TO_PERCENT = {
 };
 
 let map;
-let markerLayer;
 let selectedGroupLayer;
 let appInitialized = false;
 
@@ -113,7 +112,23 @@ overlapOptions.forEach((option) =>
 );
 
 enablePageScrollThroughTables();
-initializeWithoutPassword();
+loadGoogleMaps().then(initializeWithoutPassword).catch((error) => console.error(error));
+
+async function loadGoogleMaps() {
+  if (window.google?.maps) return;
+  const response = await fetch("../activity-entry/index.html", { cache: "no-store" });
+  const source = await response.text();
+  const key = source.match(/maps\.googleapis\.com\/maps\/api\/js\?key=([^&"'`]+)/)?.[1];
+  if (!key) throw new Error("Google Maps configuration is missing.");
+  await new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&loading=async`;
+    script.async = true;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("Google Maps did not load."));
+    document.head.appendChild(script);
+  });
+}
 
 function enablePageScrollThroughTables() {
   tableWraps.forEach((tableWrap) => {
@@ -135,10 +150,7 @@ function enablePageScrollThroughTables() {
 function initializeWithoutPassword() {
   try {
     initializeApp();
-    if (map) {
-      map.invalidateSize();
-      fitMap();
-    }
+    if (map) fitMap();
   } catch (error) {
     console.error(error);
   }
@@ -149,24 +161,23 @@ function initializeApp() {
     return;
   }
 
-  if (!window.L) {
-    throw new Error("Leaflet did not load.");
+  if (!window.google?.maps) {
+    throw new Error("Google Maps did not load.");
   }
 
-  map = L.map("map", { zoomControl: true, preferCanvas: false });
-  markerLayer = L.layerGroup().addTo(map);
-  selectedGroupLayer = L.layerGroup().addTo(map);
-
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
-    maxZoom: 18,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
-  }).addTo(map);
-
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png", {
-    maxZoom: 18,
-    pane: "shadowPane",
-    attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-  }).addTo(map);
+  map = new google.maps.Map(document.getElementById("map"), {
+    center: { lat: 13.35, lng: -88.45 }, zoom: 8, mapTypeControl: false,
+    streetViewControl: false, fullscreenControl: false, clickableIcons: false,
+    styles: [
+      { elementType: "geometry", stylers: [{ color: "#f4f5f7" }] },
+      { elementType: "labels.text.fill", stylers: [{ color: "#657080" }] },
+      { elementType: "labels.text.stroke", stylers: [{ color: "#ffffff" }] },
+      { featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
+      { featureType: "water", elementType: "geometry", stylers: [{ color: "#dcecf2" }] },
+      { featureType: "poi", stylers: [{ visibility: "off" }] },
+    ],
+  });
+  selectedGroupLayer = [];
 
   const payload = window.ACTIVITY_DATA;
   if (!payload || !Array.isArray(payload.activities)) {
@@ -214,35 +225,48 @@ function syncEstimateMode() {
     clearDensityRevealTimer();
   }
 
-  if (map) {
-    map.invalidateSize();
-  }
+  if (map) google.maps.event.trigger(map, "resize");
 
   syncEstimatePanel();
 }
 
 function renderMarkers() {
-  markerLayer.clearLayers();
+  markerById.forEach((marker) => marker.setMap(null));
   markerById = new Map();
 
   activities.forEach((activity) => {
     const shape = shapeByType.get(activity.activityType);
     const markerColor = selectedIds.has(activity.activityId) ? "#2f6db3" : "#de7b27";
-    const marker = L.marker([activity.latitude, activity.longitude], {
-      icon: L.divIcon({
-        className: "custom-div-icon",
-        html: `<div class="marker-shape marker-${shape}" style="background:${markerColor}"></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
-      }),
+    const marker = new google.maps.Marker({
+      map,
+      position: { lat: activity.latitude, lng: activity.longitude },
+      icon: markerIcon(shape, markerColor),
+      title: simplifyActivityName(activity.activityName),
     });
-
-    marker.bindTooltip(buildTooltipContent(activity, markerColor), { sticky: true, direction: "top" });
-    marker.on("click", () => toggleSelectedMembership(activity.activityId));
-    marker.addTo(markerLayer);
+    const infoWindow = new google.maps.InfoWindow({ content: buildTooltipContent(activity, markerColor) });
+    marker.addListener("mouseover", () => infoWindow.open({ map, anchor: marker }));
+    marker.addListener("mouseout", () => infoWindow.close());
+    marker.addListener("click", () => toggleSelectedMembership(activity.activityId));
+    marker.infoWindow = infoWindow;
+    marker.activityShape = shape;
     markerById.set(activity.activityId, marker);
-    marker.getElement()?.style.setProperty("cursor", "default");
   });
+}
+
+function markerIcon(shape, color) {
+  const paths = {
+    circle: google.maps.SymbolPath.CIRCLE,
+    square: "M -6,-6 6,-6 6,6 -6,6 z",
+    triangle: "M 0,-7 7,6 -7,6 z",
+  };
+  return {
+    path: paths[shape] || paths.circle,
+    fillColor: color,
+    fillOpacity: 1,
+    strokeColor: color,
+    strokeWeight: 1,
+    scale: shape === "circle" ? 6 : 1,
+  };
 }
 
 function syncSelectedGroup() {
@@ -256,7 +280,8 @@ function syncSelectedGroup() {
 }
 
 function renderSelectedOutline(group) {
-  selectedGroupLayer.clearLayers();
+  selectedGroupLayer.forEach((shape) => shape.setMap(null));
+  selectedGroupLayer = [];
   if (!group.length) {
     return;
   }
@@ -268,7 +293,7 @@ function renderSelectedOutline(group) {
     fillOpacity: 0.08,
     weight: 2,
     dashArray: "3 6",
-  }).addTo(selectedGroupLayer);
+  });
 }
 
 function renderTable(group) {
@@ -328,22 +353,11 @@ function syncMarkerStates() {
       return;
     }
 
-    const element = marker.getElement()?.querySelector(".marker-shape, .marker-triangle");
-    if (!element) {
-      return;
-    }
-
-    if (selectedIds.has(activity.activityId)) {
-      element.style.background = "#2f6db3";
-      element.style.borderBottomColor = "#2f6db3";
-      element.style.opacity = "1";
-      marker.setTooltipContent(buildTooltipContent(activity, "#2f6db3"));
-    } else {
-      element.style.background = "#de7b27";
-      element.style.borderBottomColor = "#de7b27";
-      element.style.opacity = "0.92";
-      marker.setTooltipContent(buildTooltipContent(activity, "#de7b27"));
-    }
+    const selected = selectedIds.has(activity.activityId);
+    const color = selected ? "#2f6db3" : "#de7b27";
+    marker.setIcon(markerIcon(marker.activityShape, color));
+    marker.setOpacity(selected ? 1 : 0.92);
+    marker.infoWindow.setContent(buildTooltipContent(activity, color));
   });
 }
 
@@ -518,21 +532,32 @@ function drawGroupOutline(group, style) {
       ...group.map((activity) => haversineMiles(activity, center) + paddingMiles)
     );
 
-    return L.circle([center.latitude, center.longitude], {
-      ...style,
+    const circle = new google.maps.Circle({
+      map,
+      center: { lat: center.latitude, lng: center.longitude },
       radius: radiusMiles * 1609.34,
+      strokeColor: style.color,
+      strokeOpacity: 1,
+      strokeWeight: style.weight,
+      fillColor: style.color,
+      fillOpacity: style.fillOpacity,
     });
+    selectedGroupLayer.push(circle);
+    return circle;
   }
 
   const blob = createRoundedBlob(group, style.radiusPaddingMiles || 0.55);
-  return L.polygon(blob, {
-    color: style.color,
-    fillColor: style.fillColor,
+  const polygon = new google.maps.Polygon({
+    map,
+    paths: blob.map(([latitude, longitude]) => ({ lat: latitude, lng: longitude })),
+    strokeColor: style.color,
+    strokeOpacity: 1,
+    strokeWeight: style.weight,
+    fillColor: style.color,
     fillOpacity: style.fillOpacity,
-    weight: style.weight,
-    dashArray: style.dashArray,
-    smoothFactor: 1.2,
   });
+  selectedGroupLayer.push(polygon);
+  return polygon;
 }
 
 function centroidForGroup(group) {
@@ -554,20 +579,23 @@ function centroidForGroup(group) {
 function fitMap() {
   const selectedGroup = activities.filter((activity) => selectedIds.has(activity.activityId));
   if (!selectedGroup.length) {
-    const bounds = L.latLngBounds(activities.map((activity) => [activity.latitude, activity.longitude]));
-    map.fitBounds(bounds.pad(0.08), { maxZoom: 13 });
+    const bounds = new google.maps.LatLngBounds();
+    activities.forEach((activity) => bounds.extend({ lat: activity.latitude, lng: activity.longitude }));
+    map.fitBounds(bounds, 32);
     return;
   }
 
   const latitudes = selectedGroup.map((activity) => activity.latitude);
   const longitudes = selectedGroup.map((activity) => activity.longitude);
-  const groupBounds = L.latLngBounds(
-    [Math.min(...latitudes) - 0.05, Math.min(...longitudes) - 0.075],
-    [Math.max(...latitudes) + 0.08, Math.max(...longitudes) + 0.08]
+  const groupBounds = new google.maps.LatLngBounds(
+    { lat: Math.min(...latitudes) - 0.05, lng: Math.min(...longitudes) - 0.075 },
+    { lat: Math.max(...latitudes) + 0.08, lng: Math.max(...longitudes) + 0.08 }
   );
-  const center = centroidForGroup(selectedGroup);
-  map.fitBounds(groupBounds, { maxZoom: 14 });
-  map.panTo([center.latitude - 0.006, center.longitude - 0.024], { animate: false });
+  map.fitBounds(groupBounds, 24);
+  google.maps.event.addListenerOnce(map, "idle", () => {
+    if (map.getZoom() > 14) map.setZoom(14);
+    map.panBy(18, 5);
+  });
 }
 
 function normalizeDemoPlacement(points, regionName) {
