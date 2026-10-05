@@ -121,11 +121,18 @@ async function loadGoogleMaps() {
   const key = source.match(/googleMapsApiKey:\s*["']([^"']+)["']/)?.[1];
   if (!key) throw new Error("Google Maps configuration is missing.");
   await new Promise((resolve, reject) => {
+    const callbackName = "__initializeDedupGoogleMaps";
+    window[callbackName] = () => {
+      delete window[callbackName];
+      resolve();
+    };
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&loading=async`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&loading=async&callback=${callbackName}`;
     script.async = true;
-    script.onload = resolve;
-    script.onerror = () => reject(new Error("Google Maps did not load."));
+    script.onerror = () => {
+      delete window[callbackName];
+      reject(new Error("Google Maps did not load."));
+    };
     document.head.appendChild(script);
   });
 }
