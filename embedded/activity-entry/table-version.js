@@ -112,7 +112,6 @@ try {
 } catch {}
 
 const root = document.getElementById("root");
-let googleMapsPromise;
 let currentMap = null;
 let currentMarker = null;
 let currentGeocoder = null;
@@ -550,8 +549,6 @@ function renderActivitiesMapModal() {
 
 function renderLocationModal() {
   const row = getRow(state.activeModal.rowId);
-  const hasApiKey = Boolean(window.APP_CONFIG?.googleMapsApiKey);
-  const useFallback = !hasApiKey || state.mapMessage.includes("fallback");
   return `
     <div class="modal-shell">
       <div class="modal-card" data-modal-card="true">
@@ -580,7 +577,7 @@ function renderLocationModal() {
             </div>
           </div>
           <div class="map-box">
-            ${useFallback ? renderFallbackMap(row) : `<div id="modalMap" class="map-surface"></div>`}
+            <div id="modalMap" class="map-surface"></div>
           </div>
         </div>
       </div>
@@ -741,80 +738,27 @@ function refreshBeneficiaryModalUi() {
 
 function initializeLocationModal() {
   const row = getRow(state.activeModal.rowId);
-  const fallback = document.getElementById("fallbackMapSurface");
-  if (fallback) {
-    fallback.addEventListener("click", (event) => {
-      const bounds = fallback.getBoundingClientRect();
-      const lat = 85 - ((event.clientY - bounds.top) / bounds.height) * 170;
-      const lng = -180 + ((event.clientX - bounds.left) / bounds.width) * 360;
-      updateRow(row.id, (next) => {
-        next.location.lat = lat.toFixed(6);
-        next.location.lng = lng.toFixed(6);
-        next.location.address = getModalAddress() || `Pinned location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
-        return next;
-      });
-      state.mapMessage = "";
-      render();
-    });
-    return;
-  }
-
-  loadGoogleMaps(window.APP_CONFIG.googleMapsApiKey)
-    .then((google) => {
-      const center =
-        row.location.lat && row.location.lng
-          ? { lat: Number(row.location.lat), lng: Number(row.location.lng) }
-          : { lat: 37.7749, lng: -122.4194 };
-      const map = new google.maps.Map(document.getElementById("modalMap"), {
-        center,
-        zoom: row.location.lat ? 14 : 10,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
-      });
-      const marker = new google.maps.Marker({ map });
-      const geocoder = new google.maps.Geocoder();
-      currentMap = map;
-      currentMarker = marker;
-      currentGeocoder = geocoder;
-      state.mapDebug = "Google Maps script loaded successfully.";
-      state.mapMessage = "";
-      if (row.location.lat && row.location.lng) marker.setPosition(center);
-
-      map.addListener("click", (event) => {
-        const lat = event.latLng.lat();
-        const lng = event.latLng.lng();
-        marker.setPosition({ lat, lng });
-        reverseGeocodeRow(row.id, lat, lng);
-      });
-
-      const input = document.getElementById("modalAddress");
-      const autocomplete = new google.maps.places.Autocomplete(input, {
-        fields: ["formatted_address", "geometry"],
-      });
-      autocomplete.addListener("place_changed", () => {
-        const place = autocomplete.getPlace();
-        if (!place.geometry?.location) return;
-        const lat = place.geometry.location.lat();
-        const lng = place.geometry.location.lng();
-        updateRow(row.id, (next) => {
-          next.location.address = place.formatted_address || input.value;
-          next.location.lat = lat.toFixed(6);
-          next.location.lng = lng.toFixed(6);
-          return next;
-        });
-        marker.setPosition({ lat, lng });
-        map.panTo({ lat, lng });
-        map.setZoom(14);
-        state.mapMessage = "";
-        render();
-      });
-    })
-    .catch((error) => {
-      state.mapMessage = "Google Maps could not load here. Using fallback click map.";
-      state.mapDebug = error && error.message ? error.message : String(error);
-      render();
-    });
+  const target = document.getElementById("modalMap");
+  if (!target || !window.L) return;
+  const center = row.location.lat && row.location.lng
+    ? [Number(row.location.lat), Number(row.location.lng)]
+    : [20, 0];
+  const map = L.map(target).setView(center, row.location.lat ? 14 : 2);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    maxZoom: 20,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  }).addTo(map);
+  currentMap = map;
+  currentMarker = row.location.lat && row.location.lng ? L.marker(center).addTo(map) : null;
+  currentGeocoder = null;
+  state.mapDebug = "Public CARTO basemap — no API key required.";
+  state.mapMessage = "";
+  map.on("click", (event) => {
+    const { lat, lng } = event.latlng;
+    if (currentMarker) currentMarker.setLatLng([lat, lng]);
+    else currentMarker = L.marker([lat, lng]).addTo(map);
+    reverseGeocodeRow(row.id, lat, lng);
+  });
 }
 
 function initializeActivitiesMapModal() {
@@ -822,56 +766,24 @@ function initializeActivitiesMapModal() {
   const target = document.getElementById("activitiesMap");
   if (!target || !rowsWithLocations.length) return;
 
-  loadGoogleMaps(window.APP_CONFIG.googleMapsApiKey)
-    .then((google) => {
-      const points = rowsWithLocations.map((row) => ({
-        row,
-        lat: Number(row.location.lat),
-        lng: Number(row.location.lng),
-      }));
-      const averageLat = points.reduce((sum, point) => sum + point.lat, 0) / points.length;
-      const averageLng = points.reduce((sum, point) => sum + point.lng, 0) / points.length;
-      const map = new google.maps.Map(target, {
-        center: { lat: averageLat, lng: averageLng },
-        zoom: points.length === 1 ? 12 : 4,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
-      });
-      const bounds = new google.maps.LatLngBounds();
-      const infoWindow = new google.maps.InfoWindow();
-
-      points.forEach(({ row, lat, lng }) => {
-        const marker = new google.maps.Marker({
-          map,
-          position: { lat, lng },
-          icon: {
-            path: "M -6 -6 L 6 -6 L 6 6 L -6 6 z",
-            fillColor: "#285f93",
-            fillOpacity: 1,
-            strokeColor: "#285f93",
-            strokeWeight: 1,
-            scale: 1.2,
-          },
-          title: row.activityName || row.activityType,
-        });
-        marker.addListener("mouseover", () => {
-          infoWindow.setContent(buildActivityInfoHtml(row));
-          infoWindow.open({ anchor: marker, map });
-        });
-        marker.addListener("mouseout", () => {
-          infoWindow.close();
-        });
-        bounds.extend({ lat, lng });
-      });
-
-      if (points.length > 1) {
-        map.fitBounds(bounds, 48);
-      }
-    })
-    .catch(() => {
-      target.innerHTML = `<div class="mini-card">Google Maps could not load for the activity overview.</div>`;
-    });
+  if (!window.L) {
+    target.innerHTML = `<div class="mini-card">The public map library could not load.</div>`;
+    return;
+  }
+  const points = rowsWithLocations.map((row) => ({ row, lat: Number(row.location.lat), lng: Number(row.location.lng) }));
+  const map = L.map(target).setView([points[0].lat, points[0].lng], points.length === 1 ? 12 : 4);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    maxZoom: 20,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  }).addTo(map);
+  const bounds = [];
+  points.forEach(({ row, lat, lng }) => {
+    L.marker([lat, lng], { title: row.activityName || row.activityType })
+      .addTo(map)
+      .bindPopup(buildActivityInfoHtml(row));
+    bounds.push([lat, lng]);
+  });
+  if (bounds.length > 1) map.fitBounds(bounds, { padding: [48, 48] });
 }
 
 function geocodeModalAddress(rowId) {
@@ -910,24 +822,8 @@ function reverseGeocodeRow(rowId, lat, lng) {
     return next;
   });
 
-  if (!currentGeocoder) {
-    state.mapMessage = "";
-    render();
-    return;
-  }
-
-  currentGeocoder.geocode({ location: { lat, lng } }, (results, status) => {
-    if (status === "OK" && results && results[0]) {
-      updateRow(rowId, (next) => {
-        next.location.address = results[0].formatted_address;
-        return next;
-      });
-      state.mapMessage = "";
-    } else {
-      state.mapMessage = "Coordinates were saved, but Google could not look up a formatted address.";
-    }
-    render();
-  });
+  state.mapMessage = "";
+  render();
 }
 
 function getModalAddress() {
@@ -1192,28 +1088,6 @@ function handleChange(event) {
     });
     render();
   }
-}
-
-function loadGoogleMaps(apiKey) {
-  if (window.google?.maps?.places) return Promise.resolve(window.google);
-  if (googleMapsPromise) return googleMapsPromise;
-
-  googleMapsPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-    script.async = true;
-    script.onload = () => {
-      if (window.google?.maps?.places) {
-        resolve(window.google);
-      } else {
-        reject(new Error("Google Maps script loaded, but Places is unavailable."));
-      }
-    };
-    script.onerror = () => reject(new Error("Google Maps script failed to load."));
-    document.head.appendChild(script);
-  });
-
-  return googleMapsPromise;
 }
 
 root.addEventListener("click", handleAction);
