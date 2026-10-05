@@ -469,6 +469,41 @@ input[type="number"] {
   color: #18212d;
 }
 
+.field:has(#modalAddress) {
+  position: relative;
+  z-index: 1001;
+}
+
+.address-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(24, 49, 78, 0.2);
+}
+
+.address-suggestion {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.address-suggestion:hover,
+.address-suggestion:focus {
+  background: #edf4fb;
+  outline: none;
+}
+
 .map-fallback {
   position: relative;
   background:

@@ -94,6 +94,7 @@ const state = {
   activeModal: null,
   mapDebug: "",
   mapMessage: "",
+  addressSuggestions: [],
   numericError: "",
   submitMessage: "",
   isSubmitting: false,
@@ -115,6 +116,8 @@ const root = document.getElementById("root");
 let currentMap = null;
 let currentMarker = null;
 let currentGeocoder = null;
+let addressSearchTimer = null;
+let addressSearchSequence = 0;
 
 function buildRow(index) {
   return {
@@ -564,7 +567,10 @@ function renderLocationModal() {
           <div class="stack">
             <div class="field">
               <label for="modalAddress">Address</label>
-              <input id="modalAddress" value="${escapeHtml(row.location.address)}" data-action="modal-address" />
+              <input id="modalAddress" value="${escapeHtml(row.location.address)}" data-action="modal-address" autocomplete="off" />
+              <div class="address-suggestions" id="addressSuggestions" role="listbox">
+                ${renderAddressSuggestions()}
+              </div>
             </div>
             <div class="toolbar-actions">
               <button class="btn" data-action="save-location-search" data-row-id="${row.id}">Save address</button>
@@ -794,6 +800,64 @@ function addReliableBaseLayer(targetMap) {
   layer.addTo(targetMap);
 }
 
+function renderAddressSuggestions() {
+  return state.addressSuggestions
+    .map(
+      (suggestion, index) => `
+        <button type="button" class="address-suggestion" role="option" data-action="select-address-suggestion" data-index="${index}">
+          ${escapeHtml(suggestion.display_name)}
+        </button>`
+    )
+    .join("");
+}
+
+function getSuggestionZoom(suggestion) {
+  const placeType = suggestion.addresstype || suggestion.type;
+  return placeType === "country" ? 5 : ["state", "region", "province"].includes(placeType) ? 7 : ["city", "town", "municipality"].includes(placeType) ? 11 : 14;
+}
+
+function applyAddressSuggestion(rowId, suggestion) {
+  if (!suggestion) return;
+  const lat = Number(suggestion.lat);
+  const lng = Number(suggestion.lon);
+  updateRow(rowId, (next) => {
+    next.location.address = suggestion.display_name;
+    next.location.lat = lat.toFixed(6);
+    next.location.lng = lng.toFixed(6);
+    next.location.zoom = getSuggestionZoom(suggestion);
+    return next;
+  });
+  state.addressSuggestions = [];
+  state.mapMessage = "";
+  render();
+}
+
+function scheduleAddressSuggestions(query) {
+  clearTimeout(addressSearchTimer);
+  const suggestionsNode = document.getElementById("addressSuggestions");
+  if (query.trim().length < 3) {
+    state.addressSuggestions = [];
+    if (suggestionsNode) suggestionsNode.innerHTML = "";
+    return;
+  }
+  const sequence = ++addressSearchSequence;
+  addressSearchTimer = setTimeout(async () => {
+    try {
+      const endpoint = new URL("https://nominatim.openstreetmap.org/search");
+      endpoint.searchParams.set("format", "jsonv2");
+      endpoint.searchParams.set("limit", "5");
+      endpoint.searchParams.set("q", query.trim());
+      const response = await fetch(endpoint, { headers: { Accept: "application/json" } });
+      if (!response.ok) return;
+      const results = await response.json();
+      if (sequence !== addressSearchSequence) return;
+      state.addressSuggestions = Array.isArray(results) ? results : [];
+      const node = document.getElementById("addressSuggestions");
+      if (node) node.innerHTML = renderAddressSuggestions();
+    } catch {}
+  }, 300);
+}
+
 async function geocodeModalAddress(rowId) {
   const address = getModalAddress() || getRow(rowId)?.location.address;
   if (!address) return;
@@ -816,8 +880,7 @@ async function geocodeModalAddress(rowId) {
     }
     const lat = Number(result.lat);
     const lng = Number(result.lon);
-    const placeType = result.addresstype || result.type;
-    const zoom = placeType === "country" ? 5 : ["state", "region", "province"].includes(placeType) ? 7 : ["city", "town", "municipality"].includes(placeType) ? 11 : 14;
+    const zoom = getSuggestionZoom(result);
     updateRow(rowId, (next) => {
       next.location.address = result.display_name || address;
       next.location.lat = lat.toFixed(6);
@@ -1028,6 +1091,12 @@ function handleAction(event) {
     geocodeModalAddress(rowId);
     return;
   }
+
+  if (action === "select-address-suggestion") {
+    const suggestion = state.addressSuggestions[Number(target.dataset.index)];
+    applyAddressSuggestion(state.activeModal.rowId, suggestion);
+    return;
+  }
 }
 
 function handleInput(event) {
@@ -1062,6 +1131,7 @@ function handleInput(event) {
       next.location.address = target.value;
       return next;
     });
+    scheduleAddressSuggestions(target.value);
     return;
   }
 
@@ -1104,8 +1174,21 @@ function handleChange(event) {
   }
 }
 
+function handleKeydown(event) {
+  if (event.target?.dataset?.action !== "modal-address" || event.key !== "Enter") return;
+  event.preventDefault();
+  const rowId = state.activeModal?.rowId;
+  if (!rowId) return;
+  if (state.addressSuggestions.length) {
+    applyAddressSuggestion(rowId, state.addressSuggestions[0]);
+  } else {
+    geocodeModalAddress(rowId);
+  }
+}
+
 root.addEventListener("click", handleAction);
 root.addEventListener("input", handleInput);
 root.addEventListener("change", handleChange);
+root.addEventListener("keydown", handleKeydown);
 
 render();
