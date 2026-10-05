@@ -748,6 +748,9 @@ function initializeLocationModal() {
     maxZoom: 16,
     attribution: "Tiles &copy; Esri and contributors",
   }).addTo(map);
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 16,
+  }).addTo(map);
   currentMap = map;
   currentMarker = row.location.lat && row.location.lng ? L.marker(center).addTo(map) : null;
   currentGeocoder = null;
@@ -776,6 +779,9 @@ function initializeActivitiesMapModal() {
     maxZoom: 16,
     attribution: "Tiles &copy; Esri and contributors",
   }).addTo(map);
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 16,
+  }).addTo(map);
   const bounds = [];
   points.forEach(({ row, lat, lng }) => {
     L.marker([lat, lng], { title: row.activityName || row.activityType })
@@ -786,32 +792,41 @@ function initializeActivitiesMapModal() {
   if (bounds.length > 1) map.fitBounds(bounds, { padding: [48, 48] });
 }
 
-function geocodeModalAddress(rowId) {
-  const address = getModalAddress();
-  if (!currentGeocoder || !address) return;
+async function geocodeModalAddress(rowId) {
+  const address = getModalAddress() || getRow(rowId)?.location.address;
+  if (!address) return;
 
-  currentGeocoder.geocode({ address }, (results, status) => {
-    if (status === "OK" && results && results[0] && results[0].geometry) {
-      const lat = results[0].geometry.location.lat();
-      const lng = results[0].geometry.location.lng();
-      updateRow(rowId, (next) => {
-        next.location.address = results[0].formatted_address || address;
-        next.location.lat = lat.toFixed(6);
-        next.location.lng = lng.toFixed(6);
-        return next;
-      });
-      if (currentMap && currentMarker) {
-        currentMap.panTo({ lat, lng });
-        currentMap.setZoom(14);
-        currentMarker.setPosition({ lat, lng });
-      }
-      state.mapMessage = "";
-    } else {
-      state.mapMessage = "Google could not place that address automatically. Click the map to pin it instead.";
+  state.mapMessage = "Finding this address…";
+  render();
+
+  try {
+    const endpoint = new URL("https://nominatim.openstreetmap.org/search");
+    endpoint.searchParams.set("format", "jsonv2");
+    endpoint.searchParams.set("limit", "1");
+    endpoint.searchParams.set("q", address);
+    const response = await fetch(endpoint, { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`Address lookup failed (${response.status}).`);
+    const [result] = await response.json();
+    if (!result) {
+      state.mapMessage = "Address not found. Try adding a city or country, or click the map to pin it.";
+      render();
+      return;
     }
+    const lat = Number(result.lat);
+    const lng = Number(result.lon);
+    updateRow(rowId, (next) => {
+      next.location.address = result.display_name || address;
+      next.location.lat = lat.toFixed(6);
+      next.location.lng = lng.toFixed(6);
+      return next;
+    });
+    state.mapMessage = "";
     state.activeModal = null;
     render();
-  });
+  } catch (error) {
+    state.mapMessage = "Address lookup is temporarily unavailable. Click the map to pin the location instead.";
+    render();
+  }
 }
 
 function reverseGeocodeRow(rowId, lat, lng) {
@@ -1004,15 +1019,8 @@ function handleAction(event) {
       next.location.address = address;
       return next;
     });
-    const row = getRow(rowId);
-    state.activeModal = null;
-    render();
-    if (currentGeocoder && address) {
-      geocodeModalAddress(rowId);
-      return;
-    }
-    state.mapMessage = row.location.lat && row.location.lng ? "" : "Saved address. Click the map to store coordinates.";
-    render();
+    geocodeModalAddress(rowId);
+    return;
   }
 }
 

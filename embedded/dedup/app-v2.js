@@ -161,6 +161,9 @@ function initializeApp() {
     maxZoom: 16,
     attribution: "Tiles &copy; Esri and contributors",
   }).addTo(map);
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 16,
+  }).addTo(map);
 
   const payload = window.ACTIVITY_DATA;
   if (!payload || !Array.isArray(payload.activities)) {
