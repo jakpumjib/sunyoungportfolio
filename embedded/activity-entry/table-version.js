@@ -126,6 +126,7 @@ function buildRow(index) {
       address: "",
       lat: "",
       lng: "",
+      zoom: "",
     },
     direct: category(),
     indirect: category(),
@@ -743,13 +744,10 @@ function initializeLocationModal() {
   const center = row.location.lat && row.location.lng
     ? [Number(row.location.lat), Number(row.location.lng)]
     : [20, 0];
-  const map = L.map(target).setView(center, row.location.lat ? 14 : 2);
-  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
-    maxZoom: 16,
-    attribution: "Tiles &copy; Esri and contributors",
-  }).addTo(map);
-  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
-    maxZoom: 16,
+  const map = L.map(target).setView(center, row.location.lat ? Number(row.location.zoom || 12) : 2);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
   }).addTo(map);
   currentMap = map;
   currentMarker = row.location.lat && row.location.lng ? L.marker(center).addTo(map) : null;
@@ -775,12 +773,9 @@ function initializeActivitiesMapModal() {
   }
   const points = rowsWithLocations.map((row) => ({ row, lat: Number(row.location.lat), lng: Number(row.location.lng) }));
   const map = L.map(target).setView([points[0].lat, points[0].lng], points.length === 1 ? 12 : 4);
-  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
-    maxZoom: 16,
-    attribution: "Tiles &copy; Esri and contributors",
-  }).addTo(map);
-  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
-    maxZoom: 16,
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
   }).addTo(map);
   const bounds = [];
   points.forEach(({ row, lat, lng }) => {
@@ -814,10 +809,13 @@ async function geocodeModalAddress(rowId) {
     }
     const lat = Number(result.lat);
     const lng = Number(result.lon);
+    const placeType = result.addresstype || result.type;
+    const zoom = placeType === "country" ? 5 : ["state", "region", "province"].includes(placeType) ? 7 : ["city", "town", "municipality"].includes(placeType) ? 11 : 14;
     updateRow(rowId, (next) => {
       next.location.address = result.display_name || address;
       next.location.lat = lat.toFixed(6);
       next.location.lng = lng.toFixed(6);
+      next.location.zoom = zoom;
       return next;
     });
     state.mapMessage = "";
@@ -833,6 +831,7 @@ function reverseGeocodeRow(rowId, lat, lng) {
   updateRow(rowId, (next) => {
     next.location.lat = lat.toFixed(6);
     next.location.lng = lng.toFixed(6);
+    next.location.zoom = currentMap?.getZoom?.() || 14;
     next.location.address = getModalAddress() || `Pinned location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
     return next;
   });
