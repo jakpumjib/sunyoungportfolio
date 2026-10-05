@@ -181,10 +181,12 @@ h2 {
 #map {
   height: calc(100vh - 92px);
   min-height: 0;
+  background: #f5f7fa;
 }
 
-#map .leaflet-tile {
-  filter: grayscale(1) saturate(0.15) brightness(1.04) contrast(0.96);
+#map .leaflet-tile-pane {
+  filter: grayscale(1) brightness(1.18) contrast(0.78);
+  opacity: 0.5;
 }
 
 .sidebar {
