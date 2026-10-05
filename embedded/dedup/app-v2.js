@@ -157,10 +157,16 @@ function initializeApp() {
   markerLayer = L.layerGroup().addTo(map);
   selectedGroupLayer = L.layerGroup().addTo(map);
 
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  const baseLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
-  }).addTo(map);
+  });
+  baseLayer.on("tileerror", ({ tile, coords }) => {
+    if (!tile || tile.dataset.fallbackTile === "true") return;
+    tile.dataset.fallbackTile = "true";
+    tile.src = `https://a.tile.openstreetmap.fr/hot/${coords.z}/${coords.x}/${coords.y}.png`;
+  });
+  baseLayer.addTo(map);
 
   const payload = window.ACTIVITY_DATA;
   if (!payload || !Array.isArray(payload.activities)) {

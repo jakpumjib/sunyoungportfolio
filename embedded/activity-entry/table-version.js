@@ -745,10 +745,7 @@ function initializeLocationModal() {
     ? [Number(row.location.lat), Number(row.location.lng)]
     : [20, 0];
   const map = L.map(target).setView(center, row.location.lat ? Number(row.location.zoom || 12) : 2);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
-  }).addTo(map);
+  addReliableBaseLayer(map);
   currentMap = map;
   currentMarker = row.location.lat && row.location.lng ? L.marker(center).addTo(map) : null;
   currentGeocoder = null;
@@ -773,10 +770,7 @@ function initializeActivitiesMapModal() {
   }
   const points = rowsWithLocations.map((row) => ({ row, lat: Number(row.location.lat), lng: Number(row.location.lng) }));
   const map = L.map(target).setView([points[0].lat, points[0].lng], points.length === 1 ? 12 : 4);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
-  }).addTo(map);
+  addReliableBaseLayer(map);
   const bounds = [];
   points.forEach(({ row, lat, lng }) => {
     L.marker([lat, lng], { title: row.activityName || row.activityType })
@@ -785,6 +779,19 @@ function initializeActivitiesMapModal() {
     bounds.push([lat, lng]);
   });
   if (bounds.length > 1) map.fitBounds(bounds, { padding: [48, 48] });
+}
+
+function addReliableBaseLayer(targetMap) {
+  const layer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+  });
+  layer.on("tileerror", ({ tile, coords }) => {
+    if (!tile || tile.dataset.fallbackTile === "true") return;
+    tile.dataset.fallbackTile = "true";
+    tile.src = `https://a.tile.openstreetmap.fr/hot/${coords.z}/${coords.x}/${coords.y}.png`;
+  });
+  layer.addTo(targetMap);
 }
 
 async function geocodeModalAddress(rowId) {
