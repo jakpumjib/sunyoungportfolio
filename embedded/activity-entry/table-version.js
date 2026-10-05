@@ -116,6 +116,8 @@ let googleMapsPromise;
 let currentMap = null;
 let currentMarker = null;
 let currentGeocoder = null;
+let addressSearchTimer = null;
+let addressSearchSequence = 0;
 
 function buildRow(index) {
   return {
@@ -567,6 +569,7 @@ function renderLocationModal() {
             <div class="field">
               <label for="modalAddress">Address</label>
               <input id="modalAddress" value="${escapeHtml(row.location.address)}" data-action="modal-address" />
+              <div id="addressSuggestions" class="address-suggestions" role="listbox" hidden></div>
             </div>
             <div class="toolbar-actions">
               <button class="btn" data-action="save-location-search" data-row-id="${row.id}">Save address</button>
@@ -760,7 +763,7 @@ function initializeLocationModal() {
   }
 
   loadGoogleMaps(window.APP_CONFIG.googleMapsApiKey)
-    .then((google) => {
+    .then(async (google) => {
       const center =
         row.location.lat && row.location.lng
           ? { lat: Number(row.location.lat), lng: Number(row.location.lng) }
@@ -788,33 +791,103 @@ function initializeLocationModal() {
         reverseGeocodeRow(row.id, lat, lng);
       });
 
-      const input = document.getElementById("modalAddress");
-      const autocomplete = new google.maps.places.Autocomplete(input, {
-        fields: ["formatted_address", "geometry"],
-      });
-      autocomplete.addListener("place_changed", () => {
-        const place = autocomplete.getPlace();
-        if (!place.geometry?.location) return;
-        const lat = place.geometry.location.lat();
-        const lng = place.geometry.location.lng();
-        updateRow(row.id, (next) => {
-          next.location.address = place.formatted_address || input.value;
-          next.location.lat = lat.toFixed(6);
-          next.location.lng = lng.toFixed(6);
-          return next;
-        });
-        marker.setPosition({ lat, lng });
-        map.panTo({ lat, lng });
-        map.setZoom(14);
-        state.mapMessage = "";
-        render();
-      });
+      await initializeAddressSuggestions(google, row.id, map, marker);
     })
     .catch((error) => {
       state.mapMessage = "Google Maps could not load here. Using fallback click map.";
       state.mapDebug = error && error.message ? error.message : String(error);
       render();
     });
+}
+
+async function initializeAddressSuggestions(google, rowId, map, marker) {
+  const input = document.getElementById("modalAddress");
+  const results = document.getElementById("addressSuggestions");
+  if (!input || !results) return;
+
+  const { AutocompleteSessionToken, AutocompleteSuggestion } = await google.maps.importLibrary("places");
+  let sessionToken = new AutocompleteSessionToken();
+
+  const closeSuggestions = () => {
+    results.hidden = true;
+    results.replaceChildren();
+  };
+
+  input.addEventListener("input", () => {
+    window.clearTimeout(addressSearchTimer);
+    const query = input.value.trim();
+    if (query.length < 3) {
+      closeSuggestions();
+      return;
+    }
+
+    const requestSequence = ++addressSearchSequence;
+    addressSearchTimer = window.setTimeout(async () => {
+      try {
+        const { suggestions } = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input: query,
+          sessionToken,
+        });
+        if (requestSequence !== addressSearchSequence || input.value.trim() !== query) return;
+
+        results.replaceChildren();
+        suggestions.slice(0, 6).forEach((suggestion) => {
+          if (!suggestion.placePrediction) return;
+          const option = document.createElement("button");
+          option.type = "button";
+          option.className = "address-suggestion";
+          option.setAttribute("role", "option");
+          option.textContent = suggestion.placePrediction.text.toString();
+          option.addEventListener("click", async () => {
+            option.disabled = true;
+            try {
+              const place = suggestion.placePrediction.toPlace();
+              await place.fetchFields({ fields: ["formattedAddress", "location", "viewport"] });
+              if (!place.location) return;
+
+              const lat = place.location.lat();
+              const lng = place.location.lng();
+              const address = place.formattedAddress || option.textContent;
+              input.value = address;
+              updateRow(rowId, (next) => {
+                next.location.address = address;
+                next.location.lat = lat.toFixed(6);
+                next.location.lng = lng.toFixed(6);
+                return next;
+              });
+              marker.setPosition({ lat, lng });
+              if (place.viewport) map.fitBounds(place.viewport);
+              else {
+                map.panTo({ lat, lng });
+                map.setZoom(14);
+              }
+              sessionToken = new AutocompleteSessionToken();
+              state.mapMessage = "";
+              closeSuggestions();
+              render();
+            } catch (error) {
+              state.mapMessage = "Google could not open that address. Please try another suggestion.";
+              state.mapDebug = error && error.message ? error.message : String(error);
+              render();
+            }
+          });
+          results.appendChild(option);
+        });
+        results.hidden = results.childElementCount === 0;
+      } catch (error) {
+        closeSuggestions();
+        state.mapDebug = error && error.message ? error.message : String(error);
+      }
+    }, 250);
+  });
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeSuggestions();
+    if (event.key === "Enter" && !results.hidden) {
+      event.preventDefault();
+      results.querySelector("button:not(:disabled)")?.click();
+    }
+  });
 }
 
 function initializeActivitiesMapModal() {
@@ -1195,20 +1268,26 @@ function handleChange(event) {
 }
 
 function loadGoogleMaps(apiKey) {
-  if (window.google?.maps?.places) return Promise.resolve(window.google);
+  if (window.google?.maps?.importLibrary) {
+    return window.google.maps.importLibrary("places").then(() => window.google);
+  }
   if (googleMapsPromise) return googleMapsPromise;
 
   googleMapsPromise = new Promise((resolve, reject) => {
+    const callbackName = "__activityEntryGoogleMapsReady";
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-    script.async = true;
-    script.onload = () => {
-      if (window.google?.maps?.places) {
+    window[callbackName] = async () => {
+      try {
+        await window.google.maps.importLibrary("places");
         resolve(window.google);
-      } else {
-        reject(new Error("Google Maps script loaded, but Places is unavailable."));
+      } catch (error) {
+        reject(error);
+      } finally {
+        delete window[callbackName];
       }
     };
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&loading=async&v=weekly&callback=${callbackName}`;
+    script.async = true;
     script.onerror = () => reject(new Error("Google Maps script failed to load."));
     document.head.appendChild(script);
   });
