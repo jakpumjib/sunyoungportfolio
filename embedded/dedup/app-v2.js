@@ -157,16 +157,16 @@ function initializeApp() {
   markerLayer = L.layerGroup().addTo(map);
   selectedGroupLayer = L.layerGroup().addTo(map);
 
-  const baseLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
-  });
-  baseLayer.on("tileerror", ({ tile, coords }) => {
-    if (!tile || tile.dataset.fallbackTile === "true") return;
-    tile.dataset.fallbackTile = "true";
-    tile.src = `https://a.tile.openstreetmap.fr/hot/${coords.z}/${coords.x}/${coords.y}.png`;
-  });
-  baseLayer.addTo(map);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
+    maxZoom: 18,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+  }).addTo(map);
+
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png", {
+    maxZoom: 18,
+    pane: "shadowPane",
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+  }).addTo(map);
 
   const payload = window.ACTIVITY_DATA;
   if (!payload || !Array.isArray(payload.activities)) {
